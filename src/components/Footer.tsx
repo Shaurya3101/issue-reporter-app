@@ -8,7 +8,7 @@ const Footer = () => {
           <div>
             <div className="flex items-center space-x-2 mb-4">
               <Shield className="h-6 w-6 text-civic-primary" />
-              <span className="font-bold text-lg">CivicReport</span>
+              <span className="font-bold text-lg">Report2Resolve</span>
             </div>
             <p className="text-muted-foreground mb-4">
               An official platform for reporting civic issues directly to government authorities.
@@ -30,18 +30,22 @@ const Footer = () => {
             <div className="space-y-2 text-muted-foreground">
               <div className="flex items-center space-x-2">
                 <Phone className="h-4 w-4" />
-                <span>311 (Non-Emergency)</span>
+                <span>100 (Police Emergency)</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Phone className="h-4 w-4" />
+                <span>1950 (Citizen Services)</span>
               </div>
               <div className="flex items-center space-x-2">
                 <Mail className="h-4 w-4" />
-                <span>support@civicreport.gov</span>
+                <span>support@report2resolve.gov.in</span>
               </div>
             </div>
           </div>
         </div>
         
         <div className="border-t mt-8 pt-8 text-center text-muted-foreground">
-          <p>&copy; 2024 CivicReport. Official Government Platform. All rights reserved.</p>
+          <p>&copy; 2024 Report2Resolve. Official Government of India Platform. All rights reserved.</p>
         </div>
       </div>
     </footer>

@@ -9,7 +9,7 @@ const Header = () => {
           <div className="flex items-center space-x-3">
             <Shield className="h-8 w-8 text-civic-primary" />
             <div>
-              <h1 className="text-xl font-bold text-foreground">CivicReport</h1>
+              <h1 className="text-xl font-bold text-foreground">Report2Resolve</h1>
               <p className="text-sm text-muted-foreground">Official Civic Issue Reporting</p>
             </div>
           </div>
