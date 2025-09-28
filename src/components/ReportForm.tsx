@@ -151,7 +151,7 @@ const ReportForm = () => {
 
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone Number (Optional)</Label>
-                <Input id="phone" type="tel" placeholder="(555) 123-4567" />
+                <Input id="phone" type="tel" placeholder="+91 98765 43210" />
               </div>
 
               <div className="bg-civic-info/10 border border-civic-info/20 rounded-lg p-4">
@@ -162,7 +162,7 @@ const ReportForm = () => {
                     <p className="text-muted-foreground">
                       Your report will be forwarded to the appropriate government department. 
                       You'll receive a tracking number and updates via email. For emergencies, 
-                      please call 911 or your local emergency services.
+                      please call 100 (Police), 108 (Emergency Services), or 112 (National Emergency).
                     </p>
                   </div>
                 </div>
