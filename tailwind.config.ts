@@ -47,6 +47,13 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        civic: {
+          primary: "hsl(var(--civic-primary))",
+          "primary-light": "hsl(var(--civic-primary-light))",
+          success: "hsl(var(--civic-success))",
+          warning: "hsl(var(--civic-warning))",
+          info: "hsl(var(--civic-info))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -84,6 +91,16 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+      },
+      backgroundImage: {
+        "gradient-primary": "var(--gradient-primary)",
+        "gradient-hero": "var(--gradient-hero)",
+        "gradient-card": "var(--gradient-card)",
+      },
+      boxShadow: {
+        "civic": "var(--shadow-civic)",
+        "card": "var(--shadow-card)",
+        "button": "var(--shadow-button)",
       },
     },
   },
