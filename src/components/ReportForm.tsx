@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,11 +6,92 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import { Upload, X, MapPin, AlertCircle } from "lucide-react";
+import { Upload, X, MapPin, AlertCircle, Mic, MicOff } from "lucide-react";
 
 const ReportForm = () => {
   const [files, setFiles] = useState<FileList | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [activeField, setActiveField] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    location: "",
+    description: "",
+    name: "",
+    email: "",
+    phone: ""
+  });
+  
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  // Initialize speech recognition
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-IN'; // Indian English
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (activeField) {
+          setFormData(prev => ({
+            ...prev,
+            [activeField]: prev[activeField as keyof typeof prev] + " " + transcript
+          }));
+        }
+        setIsListening(false);
+        setActiveField(null);
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        setIsListening(false);
+        setActiveField(null);
+        toast({
+          title: "Voice Recognition Error",
+          description: "Could not recognize speech. Please try speaking clearly and try again.",
+          variant: "destructive",
+        });
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+        setActiveField(null);
+      };
+    }
+  }, [activeField]);
+
+  const startVoiceInput = (fieldName: string) => {
+    if (!recognitionRef.current) {
+      toast({
+        title: "Voice Input Not Supported",
+        description: "Your browser doesn't support voice input. Please type manually.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      setActiveField(null);
+    } else {
+      setActiveField(fieldName);
+      setIsListening(true);
+      recognitionRef.current.start();
+      toast({
+        title: "Listening...",
+        description: `Speak your ${fieldName} clearly. Tap the mic again to stop.`,
+      });
+    }
+  };
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFiles(e.target.files);
@@ -79,20 +160,53 @@ const ReportForm = () => {
                     id="location"
                     placeholder="Enter the address or location of the issue"
                     required
-                    className="pl-10"
+                    className="pl-10 pr-12"
+                    value={formData.location}
+                    onChange={(e) => handleInputChange("location", e.target.value)}
                   />
                   <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-1 top-1 h-8 w-8 p-0"
+                    onClick={() => startVoiceInput("location")}
+                  >
+                    {isListening && activeField === "location" ? (
+                      <MicOff className="h-4 w-4 text-red-500 animate-pulse" />
+                    ) : (
+                      <Mic className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="description">Issue Description *</Label>
-                <Textarea
-                  id="description"
-                  placeholder="Describe the issue in detail. Include any relevant information that would help government officials understand and address the problem."
-                  required
-                  rows={4}
-                />
+                <div className="relative">
+                  <Textarea
+                    id="description"
+                    placeholder="Describe the issue in detail. Include any relevant information that would help government officials understand and address the problem."
+                    required
+                    rows={4}
+                    className="pr-12"
+                    value={formData.description}
+                    onChange={(e) => handleInputChange("description", e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-2 top-2 h-8 w-8 p-0"
+                    onClick={() => startVoiceInput("description")}
+                  >
+                    {isListening && activeField === "description" ? (
+                      <MicOff className="h-4 w-4 text-red-500 animate-pulse" />
+                    ) : (
+                      <Mic className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -141,17 +255,84 @@ const ReportForm = () => {
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Your Name *</Label>
-                  <Input id="name" placeholder="Full name" required />
+                  <div className="relative">
+                    <Input 
+                      id="name" 
+                      placeholder="Full name" 
+                      required 
+                      className="pr-10"
+                      value={formData.name}
+                      onChange={(e) => handleInputChange("name", e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1 h-8 w-8 p-0"
+                      onClick={() => startVoiceInput("name")}
+                    >
+                      {isListening && activeField === "name" ? (
+                        <MicOff className="h-4 w-4 text-red-500 animate-pulse" />
+                      ) : (
+                        <Mic className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email *</Label>
-                  <Input id="email" type="email" placeholder="your@email.com" required />
+                  <div className="relative">
+                    <Input 
+                      id="email" 
+                      type="email" 
+                      placeholder="your@email.com" 
+                      required 
+                      className="pr-10"
+                      value={formData.email}
+                      onChange={(e) => handleInputChange("email", e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1 h-8 w-8 p-0"
+                      onClick={() => startVoiceInput("email")}
+                    >
+                      {isListening && activeField === "email" ? (
+                        <MicOff className="h-4 w-4 text-red-500 animate-pulse" />
+                      ) : (
+                        <Mic className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone Number (Optional)</Label>
-                <Input id="phone" type="tel" placeholder="+91 98765 43210" />
+                <div className="relative">
+                  <Input 
+                    id="phone" 
+                    type="tel" 
+                    placeholder="+91 98765 43210" 
+                    className="pr-10"
+                    value={formData.phone}
+                    onChange={(e) => handleInputChange("phone", e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-1 top-1 h-8 w-8 p-0"
+                    onClick={() => startVoiceInput("phone")}
+                  >
+                    {isListening && activeField === "phone" ? (
+                      <MicOff className="h-4 w-4 text-red-500 animate-pulse" />
+                    ) : (
+                      <Mic className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
               <div className="bg-civic-info/10 border border-civic-info/20 rounded-lg p-4">
