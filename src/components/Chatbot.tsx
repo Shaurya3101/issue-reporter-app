@@ -93,8 +93,13 @@ const Chatbot = () => {
     setIsLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('chat', {
-        body: { 
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
           messages: [
             ...messages.map(msg => ({
               role: msg.isUser ? 'user' : 'assistant',
@@ -102,37 +107,42 @@ const Chatbot = () => {
             })),
             { role: 'user', content: messageWithContext }
           ]
-        }
+        }),
       });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-      // Handle streaming response
-      if (data && data.body) {
-        const reader = data.body.getReader();
-        const decoder = new TextDecoder();
-        let botResponse = "";
-        
-        const botMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: "",
-          isUser: false,
-          timestamp: new Date(),
-        };
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
 
-        setMessages(prev => [...prev, botMessage]);
+      const decoder = new TextDecoder();
+      let botResponse = "";
+      
+      const botMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "",
+        isUser: false,
+        timestamp: new Date(),
+      };
 
+      setMessages(prev => [...prev, botMessage]);
+
+      try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           
-          const chunk = decoder.decode(value);
+          const chunk = decoder.decode(value, { stream: true });
           const lines = chunk.split('\n');
           
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
-              if (data === '[DONE]') continue;
+              if (data.trim() === '[DONE]') continue;
               
               try {
                 const parsed = JSON.parse(data);
@@ -147,13 +157,25 @@ const Chatbot = () => {
                 }
               } catch (e) {
                 // Ignore JSON parse errors for incomplete chunks
+                console.log('JSON parse error:', e);
               }
             }
           }
         }
-      } else {
-        throw new Error("No response from AI service");
+      } finally {
+        reader.releaseLock();
       }
+
+      // If no content was received, fall back to a default response
+      if (!botResponse.trim()) {
+        botResponse = "I'm here to help with civic services. Could you please rephrase your question?";
+        setMessages(prev => prev.map(msg => 
+          msg.id === botMessage.id 
+            ? { ...msg, content: botResponse }
+            : msg
+        ));
+      }
+
     } catch (error) {
       console.error("Chat error:", error);
       const errorMessage: Message = {
@@ -162,7 +184,11 @@ const Chatbot = () => {
         isUser: false,
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => prev.map((msg, index) => 
+        index === prev.length - 1 && !msg.isUser && !msg.content
+          ? errorMessage
+          : msg
+      ));
       
       toast({
         title: "Connection Error",
@@ -173,6 +199,28 @@ const Chatbot = () => {
       setIsLoading(false);
     }
   };
+
+  const handleQuickQuestion = (question: string) => {
+    setInputMessage(question);
+    // Auto-send the question
+    setTimeout(() => {
+      setInputMessage(question);
+      setTimeout(() => {
+        const event = new KeyboardEvent('keypress', { key: 'Enter' });
+        document.querySelector('input[placeholder="Ask about civic services..."]')?.dispatchEvent(event);
+        handleSendMessage();
+      }, 100);
+    }, 50);
+  };
+
+  const commonQuestions = [
+    "How do I report a pothole?",
+    "What are the emergency contact numbers?",
+    "How can I track my complaint status?",
+    "What documents do I need for property tax?",
+    "How do I get a birth certificate?",
+    "Where is the nearest government office?"
+  ];
 
   const handleLocationRequest = async () => {
     try {
@@ -331,6 +379,39 @@ const Chatbot = () => {
           </div>
         </ScrollArea>
 
+        {/* Quick Questions */}
+        {messages.length <= 1 && (
+          <div className="mb-4">
+            <p className="text-xs text-muted-foreground mb-2">Quick questions:</p>
+            <div className="flex flex-wrap gap-1">
+              {commonQuestions.slice(0, 3).map((question, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickQuestion(question)}
+                  className="text-xs h-7 px-2"
+                >
+                  {question}
+                </Button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {commonQuestions.slice(3).map((question, index) => (
+                <Button
+                  key={index + 3}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickQuestion(question)}
+                  className="text-xs h-7 px-2"
+                >
+                  {question}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Action buttons */}
         <div className="flex gap-1 mb-3">
           <Button
@@ -360,7 +441,12 @@ const Chatbot = () => {
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               placeholder="Ask about civic services..."
-              onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+              onKeyPress={(e) => {
+                if (e.key === "Enter" && !isLoading) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
               className="pr-10"
             />
             <Button
