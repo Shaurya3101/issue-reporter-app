@@ -3,8 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageCircle, Send, Volume2, VolumeX, Mic, MicOff } from "lucide-react";
+import { MessageCircle, Send, Volume2, VolumeX, Mic, MicOff, MapPin, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import OTPVerification from "./OTPVerification";
+import { useLocation } from "@/hooks/useLocation";
 
 interface Message {
   id: string;
@@ -18,7 +21,7 @@ const Chatbot = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
-      content: "Hello! I'm your civic assistant. I can help you with reporting issues, understanding government processes, and navigating civic services. How can I help you today?",
+      content: "Hello! I'm your civic assistant with enhanced AI capabilities. I can help you with reporting issues, understanding government processes, navigating civic services, and provide location-based assistance. For secure interactions, I can verify your identity via OTP. How can I help you today?",
       isUser: false,
       timestamp: new Date(),
     },
@@ -27,7 +30,10 @@ const Chatbot = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [showOTPModal, setShowOTPModal] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
   const { toast } = useToast();
+  const { location, isLoading: locationLoading, getCurrentLocation } = useLocation();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -69,6 +75,12 @@ const Chatbot = () => {
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
 
+    // Add location context if available
+    let messageWithContext = inputMessage;
+    if (location) {
+      messageWithContext += `\n\n[User's current location: ${location.address || `${location.latitude}, ${location.longitude}`}]`;
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       content: inputMessage,
@@ -81,21 +93,80 @@ const Chatbot = () => {
     setIsLoading(true);
 
     try {
-      // Simulate AI response - replace with actual Supabase Edge Function call
-      const response = await simulateAIResponse(inputMessage);
-      
-      const botMessage: Message = {
+      const { data, error } = await supabase.functions.invoke('chat', {
+        body: { 
+          messages: [
+            ...messages.map(msg => ({
+              role: msg.isUser ? 'user' : 'assistant',
+              content: msg.content
+            })),
+            { role: 'user', content: messageWithContext }
+          ]
+        }
+      });
+
+      if (error) throw error;
+
+      // Handle streaming response
+      if (data && data.body) {
+        const reader = data.body.getReader();
+        const decoder = new TextDecoder();
+        let botResponse = "";
+        
+        const botMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: "",
+          isUser: false,
+          timestamp: new Date(),
+        };
+
+        setMessages(prev => [...prev, botMessage]);
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') continue;
+              
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.choices?.[0]?.delta?.content;
+                if (content) {
+                  botResponse += content;
+                  setMessages(prev => prev.map(msg => 
+                    msg.id === botMessage.id 
+                      ? { ...msg, content: botResponse }
+                      : msg
+                  ));
+                }
+              } catch (e) {
+                // Ignore JSON parse errors for incomplete chunks
+              }
+            }
+          }
+        }
+      } else {
+        throw new Error("No response from AI service");
+      }
+    } catch (error) {
+      console.error("Chat error:", error);
+      const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: response,
+        content: "I apologize, but I'm having trouble responding right now. Please try again in a moment.",
         isUser: false,
         timestamp: new Date(),
       };
-
-      setMessages(prev => [...prev, botMessage]);
-    } catch (error) {
+      setMessages(prev => [...prev, errorMessage]);
+      
       toast({
-        title: "Error",
-        description: "Failed to get response. Please try again.",
+        title: "Connection Error",
+        description: "Failed to get AI response. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -103,22 +174,43 @@ const Chatbot = () => {
     }
   };
 
-  const simulateAIResponse = async (message: string): Promise<string> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+  const handleLocationRequest = async () => {
+    try {
+      const locationData = await getCurrentLocation();
+      if (locationData) {
+        const locationMessage: Message = {
+          id: Date.now().toString(),
+          content: `📍 Location detected: ${locationData.address || `${locationData.latitude.toFixed(6)}, ${locationData.longitude.toFixed(6)}`}`,
+          isUser: false,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, locationMessage]);
+      }
+    } catch (error) {
+      toast({
+        title: "Location Error",
+        description: "Unable to get your location. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleOTPVerification = () => {
+    setShowOTPModal(true);
+  };
+
+  const onVerificationComplete = (verified: boolean) => {
+    setIsVerified(verified);
+    setShowOTPModal(false);
     
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes("report") || lowerMessage.includes("complaint")) {
-      return "To file a civic report, you can use our reporting form above. You'll need to provide details about the issue, location, and optionally attach photos. Common categories include road maintenance, public safety, sanitation, and infrastructure issues.";
-    } else if (lowerMessage.includes("track") || lowerMessage.includes("status")) {
-      return "You can track your report status using the tracking number provided after submission. Reports are typically reviewed within 2-3 business days and forwarded to the appropriate government department.";
-    } else if (lowerMessage.includes("emergency")) {
-      return "For emergencies, please call: 100 (Police), 108 (Emergency Services), or 112 (National Emergency). This platform is for non-emergency civic issues only.";
-    } else if (lowerMessage.includes("hello") || lowerMessage.includes("hi")) {
-      return "Hello! I'm here to help you with civic services and reporting. You can ask me about filing reports, tracking complaints, understanding government processes, or any other civic-related questions.";
-    } else {
-      return "I understand you're asking about civic services. I can help you with reporting issues, understanding government processes, tracking complaints, and general civic information. Could you please be more specific about what you need help with?";
+    if (verified) {
+      const verificationMessage: Message = {
+        id: Date.now().toString(),
+        content: "🔐 Phone verification successful! You now have access to secure civic services and can file verified reports.",
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, verificationMessage]);
     }
   };
 
@@ -239,7 +331,30 @@ const Chatbot = () => {
           </div>
         </ScrollArea>
 
-        <div className="flex gap-2 mt-4">
+        {/* Action buttons */}
+        <div className="flex gap-1 mb-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLocationRequest}
+            disabled={locationLoading}
+            className="flex-1 text-xs"
+          >
+            <MapPin className="h-3 w-3 mr-1" />
+            {locationLoading ? "Getting..." : "Get Location"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleOTPVerification}
+            className={`flex-1 text-xs ${isVerified ? 'bg-green-50 border-green-200' : ''}`}
+          >
+            <Shield className="h-3 w-3 mr-1" />
+            {isVerified ? "Verified" : "Verify OTP"}
+          </Button>
+        </div>
+
+        <div className="flex gap-2">
           <div className="flex-1 relative">
             <Input
               value={inputMessage}
@@ -271,6 +386,13 @@ const Chatbot = () => {
           </Button>
         </div>
       </CardContent>
+      
+      {showOTPModal && (
+        <OTPVerification
+          onVerificationComplete={onVerificationComplete}
+          onClose={() => setShowOTPModal(false)}
+        />
+      )}
     </Card>
   );
 };
